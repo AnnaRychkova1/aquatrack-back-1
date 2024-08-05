@@ -16,7 +16,6 @@ app.use(morgan("tiny"));
 app.use(cors());
 app.use(express.json());
 app.use("/avatars", express.static(path.resolve("public/avatars")));
-
 app.use("/api/users", userRouter);
 app.use("/api/water", authMiddleware, waterRouter);
 app.use("/api-docs", swaggerUI.serve, swaggerUI.setup(swaggerDocument));
