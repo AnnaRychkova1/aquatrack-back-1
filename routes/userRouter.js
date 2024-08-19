@@ -5,13 +5,13 @@ import {
   logout,
   current,
   verifyEmail,
-  resendVerificationEmail,
-  newPassword,
-  customPassword,
+  forgotPassword,
   updateCustomPassword,
   countUsers,
   googleAuth,
   googleRedirect,
+  resendVerificationEmail,
+  generatePassword,
 } from "../controllers/authControllers.js";
 import { updAvatar, updDataUser } from "../controllers/usersControllers.js";
 import authMiddleware from "../middlewares/auth.js";
@@ -26,18 +26,17 @@ import uploadMiddleware from "../middlewares/uploadFileAvatar.js";
 
 const userRouter = express.Router();
 
+userRouter.get("/count", countUsers);
 userRouter.post("/register", registerSchema, register);
 userRouter.post("/login", loginSchema, login);
 userRouter.post("/logout", authMiddleware, logout);
 userRouter.get("/current", authMiddleware, current);
 userRouter.get("/verify/:verificationToken", verifyEmail);
 userRouter.post("/verify", verifySchema, resendVerificationEmail);
-userRouter.get("/count", countUsers);
-
-userRouter.post("/password/new", newPasswordSchema, newPassword);
-userRouter.post("/password/custom", newPasswordSchema, customPassword);
+userRouter.post("/password/forgot", newPasswordSchema, forgotPassword);
+userRouter.post("/password/generate", newPasswordSchema, generatePassword);
 userRouter.post(
-  "/password/custom/update",
+  "/password/update",
   authPasswordMiddleware,
   updateCustomPassword
 );
