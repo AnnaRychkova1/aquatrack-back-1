@@ -1,14 +1,15 @@
 import bcrypt from "bcrypt";
-import crypto, { verify } from "node:crypto";
-import { User, registerSchema } from "../schemas/usersSchemas.js";
+import crypto from "node:crypto";
 import jwt from "jsonwebtoken";
 import gravatar from "gravatar";
-import generator from "generate-password";
-import * as tokenServices from "../services/tokenServices.js";
 import axios from "axios";
 import queryString from "query-string";
-
 import sgMail from "@sendgrid/mail";
+import generator from "generate-password";
+
+import * as tokenServices from "../services/tokenServices.js";
+import { User } from "../schemas/usersSchemas.js";
+
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 const { BASE_URL } = process.env;
@@ -22,9 +23,7 @@ const cookieConfig = {
 export async function countUsers(req, res, next) {
   try {
     const totalCount = await User.countDocuments();
-    res.json({
-      userCount: totalCount,
-    });
+    res.json(totalCount);
   } catch (error) {
     next(error);
   }
@@ -191,6 +190,169 @@ export async function current(req, res, next) {
   }
 }
 
+export async function forgotPassword(req, res, next) {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: "missing required field email" });
+    }
+    const foundUser = await User.findOne({ email });
+    if (!foundUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    const token = jwt.sign(
+      { id: foundUser._id, email: foundUser.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "15m" }
+    );
+    await User.findByIdAndUpdate(
+      foundUser._id,
+      { tmpToken: token },
+      { new: true }
+    );
+    const updateLink = `${process.env.FRONTEND_URL}/renew?token=${token}`;
+    const msg = {
+      to: email,
+      from: "aanytkaa@gmail.com",
+      subject: "Password change request in AquaTrack",
+      html: `
+      <html>
+      <body style="max-width: 400px; max-height: 300px">
+        <div style="background-color: #f0eff4; padding: 10px; border-radius: 10px; text-align: center;">
+          <h2 style="background-color: #4CAF50; color: #323f47; padding: 10px; border-radius: 5px;">Change your password in the AquaTrack application</h2>
+          <p style="color: #2f2f2f;">You have sent a password change request for AquaTrack.</p>
+          <p style="color: #2f2f2f;">Please click the button below to continue changing your password:</p>
+          <a href="${updateLink}" style="display: inline-block; padding: 10px 20px; font-size: 16px; color: #323f47; background-color: #4CAF50; text-decoration: none; border-radius: 5px;">Change password</a>
+         <p style="color: #2f2f2f;">If you have not sent a request, please ignore the message.</p>
+          </div>
+      </body>
+      </html>
+    `,
+    };
+    sgMail
+      .send(msg)
+      .then(() => {
+        console.log("Email sent");
+      })
+      .catch((error) => {
+        console.error(error);
+      });
+    res.status(200).json("Create your new password");
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+}
+
+export async function updateCustomPassword(req, res, next) {
+  try {
+    const { password } = req.body;
+    const passwordHash = await bcrypt.hash(password, 10);
+    await User.findByIdAndUpdate(req.user._id, {
+      password: passwordHash,
+      tmpToken: null,
+    });
+    res.status(200).json("Password updated");
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+}
+
+export async function resendVerificationEmail(req, res, next) {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: "missing required field email" });
+    }
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    if (user.verify === true) {
+      return res
+        .status(400)
+        .json({ message: "Verification has already been passed" });
+    }
+    const verificationToken = crypto.randomUUID();
+    user.verificationToken = verificationToken;
+    await user.save();
+    const verificationLink = `${BASE_URL}/api/users/verify/${verificationToken}`;
+    const msg = {
+      to: email,
+      from: "aanytkaa@gmail.com",
+      subject: "Welcome to Agua track",
+      html: `
+      <html>
+      <body style="max-width: 400px; max-height: 300px">
+        <div style="background-color: #f0eff4; padding: 10px; border-radius: 10px; text-align: center;">
+          <h2 style="background-color: #4CAF50; color: #323f47; padding: 10px; border-radius: 5px;">Verify your Email</h2>
+          <p style="color: #2f2f2f;">Thank you for registering with AquaTrack!</p>
+          <p style="color: #2f2f2f;">Please click the button below to verify your email address:</p>
+          <a href="${verificationLink}" style="display: inline-block; padding: 10px 20px; font-size: 16px; color: #323f47; background-color: #4CAF50; text-decoration: none; border-radius: 5px;">Verify Email</a>
+        </div>
+      </body>
+      </html>
+    `,
+    };
+    sgMail
+      .send(msg)
+      .then(() => {
+        console.log("Email sent");
+      })
+      .catch((error) => {
+        console.error(error);
+      });
+    res.status(200).json({ message: "Verification email sent" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+}
+
+export async function generatePassword(req, res, next) {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: "missing required field email" });
+    }
+    const foundUser = await User.findOne({ email });
+    if (!foundUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    const password = generator.generate({ length: 10, numbers: true });
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await User.findByIdAndUpdate(foundUser._id, {
+      password: passwordHash,
+    });
+    const msg = {
+      to: email,
+      from: "aanytkaa@gmail.com",
+      subject: "Your password to AguaTrack",
+      html: `
+  <html>
+  <body style="max-width: 400px; max-height: 300px">
+    <div style="background-color: #f0eff4; padding: 10px; border-radius: 10px; text-align: center;">
+      <h2 style="background-color: #4CAF50; color: #323f47; padding: 10px; border-radius: 5px;">Your password has been changed!</h2>
+      <p style="color: #2f2f2f;">Congratulations! You have successfully updated your AquaTrack password! Your new password:</p>
+      <h3 style="background-color: #4CAF50; color: #323f47; padding: 10px; border-radius: 5px; text-align: center; margin: 0 auto; width: 120px;">${password}</h3>
+    </div>
+  </body>
+  </html>
+`,
+    };
+    sgMail
+      .send(msg)
+      .then(() => {
+        console.log("Email sent");
+      })
+      .catch((error) => {
+        console.error(error);
+      });
+
+    res.status(200).json("New password sent to email");
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+}
+
 export const googleAuth = async (req, res, next) => {
   try {
     const clientId = process.env.GOOGLE_CLOUD_ID;
@@ -246,6 +408,7 @@ export const googleRedirect = async (req, res, next) => {
     const avatarURL = userData.data.picture;
 
     let user = await User.findOne({ email });
+
     if (!user) {
       const hashedPassword = await bcrypt.hash(crypto.randomUUID(), 10);
       user = new User({
@@ -271,11 +434,13 @@ export const googleRedirect = async (req, res, next) => {
         { new: true }
       );
     }
+
     const payload = { id: user._id, email: user.email };
     const { token, refreshToken } = await tokenServices.generateToken(payload);
     await tokenServices.saveToken(user._id, refreshToken);
     await User.findByIdAndUpdate(user._id, { token }, { new: true });
-    const redirectUrl = `${process.env.FRONTEND_URL}/signin`;
+    const redirectUrl = `${process.env.FRONTEND_URL}/signin?token=${token}`;
+
     res
       .cookie("refreshToken", refreshToken, cookieConfig)
       .redirect(redirectUrl);
@@ -283,168 +448,3 @@ export const googleRedirect = async (req, res, next) => {
     next(error);
   }
 };
-
-// planed
-
-export async function resendVerificationEmail(req, res, next) {
-  try {
-    const { email } = req.body;
-    if (!email) {
-      return res.status(400).json({ message: "missing required field email" });
-    }
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-    if (user.verify === true) {
-      return res
-        .status(400)
-        .json({ message: "Verification has already been passed" });
-    }
-    const verificationToken = crypto.randomUUID();
-    user.verificationToken = verificationToken;
-    await user.save();
-    const verificationLink = `${BASE_URL}/api/users/verify/${verificationToken}`;
-    const msg = {
-      to: email,
-      from: "aanytkaa@gmail.com",
-      subject: "Welcome to Agua track",
-      html: `
-      <html>
-      <body style="max-width: 400px; max-height: 300px">
-        <div style="background-color: #f0eff4; padding: 10px; border-radius: 10px; text-align: center;">
-          <h2 style="background-color: #4CAF50; color: #323f47; padding: 10px; border-radius: 5px;">Verify your Email</h2>
-          <p style="color: #2f2f2f;">Thank you for registering with AquaTrack!</p>
-          <p style="color: #2f2f2f;">Please click the button below to verify your email address:</p>
-          <a href="${verificationLink}" style="display: inline-block; padding: 10px 20px; font-size: 16px; color: #323f47; background-color: #4CAF50; text-decoration: none; border-radius: 5px;">Verify Email</a>
-        </div>
-      </body>
-      </html>
-    `,
-    };
-    sgMail
-      .send(msg)
-      .then(() => {
-        console.log("Email sent");
-      })
-      .catch((error) => {
-        console.error(error);
-      });
-    res.status(200).json({ message: "Verification email sent" });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-}
-
-export async function newPassword(req, res, next) {
-  try {
-    const { email } = req.body;
-    if (!email) {
-      return res.status(400).json({ message: "missing required field email" });
-    }
-    const foundUser = await User.findOne({ email });
-    if (!foundUser) {
-      return res.status(404).json({ message: "User not found" });
-    }
-    const password = generator.generate({ length: 10, numbers: true });
-    const passwordHash = await bcrypt.hash(password, 10);
-    const user = await User.findByIdAndUpdate(foundUser._id, {
-      password: passwordHash,
-    });
-    const msg = {
-      to: email,
-      from: "aanytkaa@gmail.com",
-      subject: "Your password to AguaTrack",
-      html: `
-  <html>
-  <body style="max-width: 400px; max-height: 300px">
-    <div style="background-color: #f0eff4; padding: 10px; border-radius: 10px; text-align: center;">
-      <h2 style="background-color: #4CAF50; color: #323f47; padding: 10px; border-radius: 5px;">Your password has been changed!</h2>
-      <p style="color: #2f2f2f;">Congratulations! You have successfully updated your AquaTrack password! Your new password:</p>
-      <h3 style="background-color: #4CAF50; color: #323f47; padding: 10px; border-radius: 5px; text-align: center; margin: 0 auto; width: 120px;">${password}</h3>
-    </div>
-  </body>
-  </html>
-`,
-    };
-
-    sgMail
-      .send(msg)
-      .then(() => {
-        console.log("Email sent");
-      })
-      .catch((error) => {
-        console.error(error);
-      });
-
-    res.status(200).json("New password sent to email");
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-}
-
-export async function customPassword(req, res, next) {
-  try {
-    const { email } = req.body;
-    if (!email) {
-      return res.status(400).json({ message: "missing required field email" });
-    }
-    const foundUser = await User.findOne({ email });
-    if (!foundUser) {
-      return res.status(404).json({ message: "User not found" });
-    }
-    const token = jwt.sign(
-      { id: foundUser._id, email: foundUser.email },
-      process.env.JWT_SECRET,
-      { expiresIn: "15m" }
-    );
-    await User.findByIdAndUpdate(
-      foundUser._id,
-      { tmpToken: token },
-      { new: true }
-    );
-    const updateLink = `${process.env.FRONTEND_URL}/password-change?token=${token}`;
-    const msg = {
-      to: email,
-      from: "aanytkaa@gmail.com",
-      subject: "Password change request in AquaTrack",
-      html: `
-      <html>
-      <body style="max-width: 400px; max-height: 300px">
-        <div style="background-color: #f0eff4; padding: 10px; border-radius: 10px; text-align: center;">
-          <h2 style="background-color: #4CAF50; color: #323f47; padding: 10px; border-radius: 5px;">Change your password in the AquaTrack application</h2>
-          <p style="color: #2f2f2f;">You have sent a password change request for AquaTrack.</p>
-          <p style="color: #2f2f2f;">Please click the button below to continue changing your password:</p>
-          <a href="${updateLink}" style="display: inline-block; padding: 10px 20px; font-size: 16px; color: #323f47; background-color: #4CAF50; text-decoration: none; border-radius: 5px;">Change password</a>
-         <p style="color: #2f2f2f;">If you have not sent a request, please ignore the message.</p>
-          </div>
-      </body>
-      </html>
-    `,
-    };
-    sgMail
-      .send(msg)
-      .then(() => {
-        console.log("Email sent");
-      })
-      .catch((error) => {
-        console.error(error);
-      });
-    res.status(200).json("New password sent to email");
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-}
-
-export async function updateCustomPassword(req, res, next) {
-  try {
-    const { password } = req.body;
-    const passwordHash = await bcrypt.hash(password, 10);
-    await User.findByIdAndUpdate(req.user._id, {
-      password: passwordHash,
-    });
-    res.status(200).json("Password updated");
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-}
