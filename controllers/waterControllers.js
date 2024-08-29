@@ -2,9 +2,9 @@ import { Water } from "../models/water.js";
 
 export const addWater = async (req, res) => {
   try {
-    const { date, volume } = req.body;
+    const { date, volume, timezoneOffset } = req.body;
     const userId = req.user.id;
-    const utcDate = new Date(date).getTime() + timezoneOffset * 60000;
+    const utcDate = new Date(date).getTime() - timezoneOffset * 60000;
 
     const newWaterEntry = await Water.create({
       user: userId,
@@ -21,14 +21,14 @@ export const addWater = async (req, res) => {
 export const updateWater = async (req, res) => {
   try {
     const { id } = req.params;
-    const { date, volume } = req.body;
+    const { date, volume, timezoneOffset } = req.body;
     const userId = req.user.id;
 
-    const utcDate = new Date(date).getTime() + timezoneOffset * 60000;
+    const utcDate = new Date(date).getTime() - timezoneOffset * 60000;
 
     const updatedWaterEntry = await Water.findOneAndUpdate(
       { _id: id, user: userId },
-      { date: utcDate ? new Date(utcDate) : undefined, volume },
+      { date: date ? new Date(utcDate) : undefined, volume },
       { new: true }
     );
 
