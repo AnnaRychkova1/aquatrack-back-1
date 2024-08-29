@@ -3,6 +3,7 @@ import { Water } from "../models/water.js";
 export const addWater = async (req, res) => {
   try {
     const { date, volume, timezoneOffset } = req.body;
+
     const userId = req.user.id;
     const utcDate = new Date(date).getTime() - timezoneOffset * 60000;
 
@@ -69,9 +70,8 @@ export const getDailyWater = async (req, res) => {
   try {
     const userId = req.user.id;
     const date = req.query.date ? new Date(req.query.date) : new Date();
-    const timezoneOffset = req.query.timezoneOffset
-      ? parseInt(req.query.timezoneOffset, 10)
-      : date.getTimezoneOffset();
+    const timezoneOffset = req.query.timezoneOffset;
+
     const localDate = new Date(date.getTime() - timezoneOffset * 60000);
     const startDate = new Date(
       localDate.getFullYear(),
@@ -87,7 +87,6 @@ export const getDailyWater = async (req, res) => {
         $lt: endDate,
       },
     });
-    console.log(waterEntries);
     res.status(200).json(waterEntries);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -108,9 +107,7 @@ export const getMonthlyWater = async (req, res) => {
       return res.status(400).json({ message: "Invalid month or year format" });
     }
 
-    const timezoneOffset = req.query.timezoneOffset
-      ? parseInt(req.query.timezoneOffset, 10)
-      : new Date().getTimezoneOffset();
+    const timezoneOffset = req.query.timezoneOffset;
 
     const startDate = new Date(
       Date.UTC(year, month - 1, 1) - timezoneOffset * 60000
