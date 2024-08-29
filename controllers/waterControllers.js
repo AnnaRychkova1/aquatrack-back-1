@@ -4,10 +4,11 @@ export const addWater = async (req, res) => {
   try {
     const { date, volume } = req.body;
     const userId = req.user.id;
+    const utcDate = new Date(date).getTime() + timezoneOffset * 60000;
 
     const newWaterEntry = await Water.create({
       user: userId,
-      date: date ? new Date(date) : new Date(),
+      date: date ? new Date(utcDate) : new Date(),
       volume,
     });
 
@@ -23,9 +24,11 @@ export const updateWater = async (req, res) => {
     const { date, volume } = req.body;
     const userId = req.user.id;
 
+    const utcDate = new Date(date).getTime() + timezoneOffset * 60000;
+
     const updatedWaterEntry = await Water.findOneAndUpdate(
       { _id: id, user: userId },
-      { date: date ? new Date(date) : undefined, volume },
+      { date: utcDate ? new Date(utcDate) : undefined, volume },
       { new: true }
     );
 
