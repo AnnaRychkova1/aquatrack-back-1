@@ -66,10 +66,14 @@ export const getDailyWater = async (req, res) => {
   try {
     const userId = req.user.id;
     const date = req.query.date ? new Date(req.query.date) : new Date();
+    const timezoneOffset = req.query.timezoneOffset
+      ? parseInt(req.query.timezoneOffset, 10)
+      : date.getTimezoneOffset();
+    const localDate = new Date(date.getTime() - timezoneOffset * 60000);
     const startDate = new Date(
-      date.getFullYear(),
-      date.getMonth(),
-      date.getDate()
+      localDate.getFullYear(),
+      localDate.getMonth(),
+      localDate.getDate()
     );
     const endDate = new Date(startDate.getTime() + 24 * 60 * 60 * 1000);
 
@@ -80,7 +84,7 @@ export const getDailyWater = async (req, res) => {
         $lt: endDate,
       },
     });
-
+    console.log(waterEntries);
     res.status(200).json(waterEntries);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -101,8 +105,14 @@ export const getMonthlyWater = async (req, res) => {
       return res.status(400).json({ message: "Invalid month or year format" });
     }
 
-    const startDate = new Date(Date.UTC(year, month - 1, 1));
-    const endDate = new Date(Date.UTC(year, month, 1));
+    const timezoneOffset = req.query.timezoneOffset
+      ? parseInt(req.query.timezoneOffset, 10)
+      : new Date().getTimezoneOffset();
+
+    const startDate = new Date(
+      Date.UTC(year, month - 1, 1) - timezoneOffset * 60000
+    );
+    const endDate = new Date(Date.UTC(year, month, 1) - timezoneOffset * 60000);
 
     const waterEntries = await Water.find({
       user: userId,
