@@ -107,12 +107,8 @@ export const getMonthlyWater = async (req, res) => {
       return res.status(400).json({ message: "Invalid month or year format" });
     }
 
-    const timezoneOffset = req.query.timezoneOffset;
-
-    const startDate = new Date(
-      Date.UTC(year, month - 1, 1) - timezoneOffset * 60000
-    );
-    const endDate = new Date(Date.UTC(year, month, 1) - timezoneOffset * 60000);
+    const startDate = new Date(Date.UTC(year, month - 1, 1));
+    const endDate = new Date(Date.UTC(year, month, 1));
 
     const waterEntries = await Water.find({
       user: userId,
