@@ -97,9 +97,17 @@ export async function verifyEmail(req, res, next) {
     if (!user) {
       return res.status(404).json("User not found");
     }
+    const token = jwt.sign(
+      { id: user._id, email: user.email },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: "1d",
+      }
+    );
+
     const updatedUser = await User.findByIdAndUpdate(
       user._id,
-      { $set: { verify: true, verificationToken: null } },
+      { $set: { verify: true, verificationToken: null, token } },
       { new: true }
     );
 
@@ -107,7 +115,7 @@ export async function verifyEmail(req, res, next) {
       return res.status(500).json("Failed to update user");
     }
 
-    const redirectUrl = `${process.env.FRONTEND_URL}/signin`;
+    const redirectUrl = `${process.env.FRONTEND_URL}/relocate?token=${token}`;
 
     res.redirect(redirectUrl);
   } catch (error) {
@@ -168,6 +176,7 @@ export async function logout(req, res, next) {
 }
 
 export async function current(req, res, next) {
+  console.log(req.user);
   try {
     const user = await User.findById(req.user.id.toString());
     if (!user) {
@@ -247,10 +256,14 @@ export async function updateCustomPassword(req, res, next) {
   try {
     const { password } = req.body;
     const passwordHash = await bcrypt.hash(password, 10);
-    await User.findByIdAndUpdate(req.user._id, {
-      password: passwordHash,
-      tmpToken: null,
-    });
+    const newuser = await User.findByIdAndUpdate(
+      req.user._id,
+      {
+        password: passwordHash,
+        tmpToken: null,
+      },
+      { new: true }
+    );
     res.status(200).json("Password updated");
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -439,7 +452,7 @@ export const googleRedirect = async (req, res, next) => {
     const { token, refreshToken } = await tokenServices.generateToken(payload);
     await tokenServices.saveToken(user._id, refreshToken);
     await User.findByIdAndUpdate(user._id, { token }, { new: true });
-    const redirectUrl = `${process.env.FRONTEND_URL}/signin?token=${token}`;
+    const redirectUrl = `${process.env.FRONTEND_URL}/relocate?token=${token}`;
 
     res
       .cookie("refreshToken", refreshToken, cookieConfig)
